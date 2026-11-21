@@ -1,0 +1,1308 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>飛行棋</title>
+<style>
+:root{
+  --ink:#eef2fa; --muted:#9aa7c0; --card:rgba(255,255,255,.06); --card-b:rgba(255,255,255,.12);
+  --line:rgba(255,255,255,.1); --accent:#ffb62e; --accent2:#ff8a1f; --accent-ink:#2b1a00;
+  --sheet:#1c2538;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;color:var(--ink);
+  font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",system-ui,sans-serif;
+  background:#0e1422}
+body{background:radial-gradient(1300px 900px at 50% 35%,#2b3859 0%,#18203a 45%,#0d1220 100%) fixed}
+button{font:inherit;color:inherit;cursor:pointer}
+h1,h2,h3,h4,p{margin:0}
+
+/* ===== 版面：桌機（以 1920×1080 為準，三欄不捲動） ===== */
+#app{
+  --board:min(calc(100vh - 32px), calc(100vw - 250px - 270px - 64px));
+  display:grid;grid-template-columns:minmax(250px,380px) var(--board) minmax(270px,420px);
+  gap:16px;padding:16px;height:100vh;justify-content:center;
+}
+#left,#right{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:thin}
+#stageWrap{display:flex;align-items:center;justify-content:center;min-width:0}
+#stage{width:var(--board);aspect-ratio:1;position:relative;--k:1;perspective:calc(var(--k)*1500px);user-select:none}
+
+.card{background:var(--card);border:1px solid var(--card-b);border-radius:16px;padding:14px}
+.card h3{font-size:13px;color:var(--muted);font-weight:600;letter-spacing:1px;margin-bottom:10px}
+#brand{display:flex;align-items:center;gap:12px}
+#brand .logo{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:24px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);box-shadow:0 6px 18px rgba(255,150,30,.35)}
+#brand h1{font-size:22px;letter-spacing:3px}
+#brand small{color:var(--muted);font-size:12px}
+#brand .sp{flex:1}
+
+/* 玩家 */
+#playerList{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.pl{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;border:1px solid transparent;background:rgba(255,255,255,.04)}
+.pl.cur{border-color:var(--pc);background:rgba(255,255,255,.1);box-shadow:0 0 0 1px var(--pc) inset}
+.pl .chip{width:26px;height:26px;border-radius:50%;background:var(--pc);border:2px solid #fff;flex:none}
+.pl .pn{flex:1;min-width:0;line-height:1.2}
+.pl .pn b{font-size:15px}
+.pl .pn small{display:block;color:var(--muted);font-size:12px;white-space:nowrap}
+.pl .pips{display:flex;gap:4px}
+.pl .pips i{width:11px;height:11px;border-radius:50%;border:2px solid var(--pc);background:transparent}
+.pl .pips i.out{background:var(--pc)}
+.pl .pips i.home{background:#ffcf4a;border-color:#ffcf4a;box-shadow:0 0 6px #ffcf4a}
+.pl .hits{font-size:12px;color:var(--muted);min-width:34px;text-align:right}
+.pl .rk{font-size:18px}
+#ruleList{margin:0;padding-left:18px;font-size:13px;line-height:1.7;color:#d6ddec}
+details{font-size:13px;line-height:1.7;color:#c5cee0;margin-top:8px}
+details summary{cursor:pointer;color:var(--muted);font-weight:600}
+details p{margin-top:6px}
+
+/* 視角 */
+.seg{display:flex;background:rgba(0,0,0,.25);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;border:none;background:transparent;padding:9px 0;border-radius:9px;font-weight:700;color:var(--muted)}
+.seg button.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink)}
+#viewCtl{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-top:12px;font-size:13px;color:var(--muted)}
+#viewCtl[hidden]{display:none}
+#viewCtl input[type=range]{width:100%;accent-color:var(--accent)}
+#viewCtl .hint{grid-column:1/-1;font-size:12px}
+.volRow{display:flex;align-items:center;gap:10px;margin-top:12px}
+.volRow button{width:44px;height:38px;border-radius:10px;border:1px solid var(--card-b);background:rgba(255,255,255,.06);font-size:18px;flex:none}
+.volRow input{flex:1;accent-color:var(--accent)}
+.btns{display:flex;gap:8px}
+.btns button,.ghostBtn{flex:1;padding:11px;border-radius:12px;border:1px solid var(--card-b);background:rgba(255,255,255,.06)}
+.btns button:hover,.ghostBtn:hover{background:rgba(255,255,255,.12)}
+
+/* 回合與骰子 */
+#turnHead{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:700}
+#turnHead .chip{width:18px;height:18px;border-radius:50%;border:2px solid #fff}
+#turnHead small{font-weight:400;color:var(--muted);font-size:13px}
+.dieRow{display:flex;align-items:center;gap:16px;margin:14px 0 10px}
+.dieBox{width:66px;height:66px;perspective:420px;flex:none}
+.cube{width:100%;height:100%;position:relative;transform-style:preserve-3d;transform:translateZ(-33px);transition:transform .65s cubic-bezier(.2,.75,.25,1)}
+.face{position:absolute;inset:0;border-radius:13px;background:linear-gradient(145deg,#ffffff,#dde2ec);border:1px solid #b9c0cf;
+  display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:10px}
+.face i{width:11px;height:11px;border-radius:50%;background:#1b2438;place-self:center;visibility:hidden}
+.face i.on{visibility:visible}
+.face.f1 i.on{background:#e03a3a;width:15px;height:15px}
+.f1{transform:translateZ(33px)} .f6{transform:rotateY(180deg) translateZ(33px)}
+.f3{transform:rotateY(90deg) translateZ(33px)} .f4{transform:rotateY(-90deg) translateZ(33px)}
+.f5{transform:rotateX(90deg) translateZ(33px)} .f2{transform:rotateX(-90deg) translateZ(33px)}
+#rollBtn{flex:1;padding:16px 10px;border:none;border-radius:14px;font-size:19px;font-weight:800;letter-spacing:2px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);box-shadow:0 8px 20px rgba(255,150,30,.3)}
+#rollBtn:active{transform:translateY(1px)}
+#rollBtn:disabled{background:rgba(255,255,255,.1);color:var(--muted);box-shadow:none;cursor:default}
+#msg{min-height:22px;font-size:14px;color:#d6ddec}
+#logCard{flex:1;min-height:140px;display:flex;flex-direction:column}
+#log{margin:0;padding:0;list-style:none;font-size:13px;line-height:1.6;overflow:auto;flex:1;scrollbar-width:thin}
+#log li{border-bottom:1px dashed var(--line);padding:3px 0;color:#cfd7e8}
+
+@media (min-width:1700px) and (min-height:900px){ #left,#right{zoom:1.18} }
+
+/* ===== 版面：手機／窄螢幕 ===== */
+@media (max-width:1100px){
+  #app{display:flex;flex-direction:column;height:auto;min-height:100vh;padding:8px 8px 14px;gap:10px}
+  #left,#right{display:contents}
+  #brand{order:0;padding:8px 12px}
+  #brand .logo{width:36px;height:36px;font-size:19px;border-radius:11px}
+  #brand h1{font-size:18px}
+  #stageWrap{order:1}
+  #stage{width:min(100%,calc(100vh - 170px));min-width:260px}
+  #ctrl{order:2;position:sticky;bottom:8px;z-index:6;background:#222c46;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  #turnHead{font-size:16px}
+  .dieRow{margin:8px 0 6px;gap:12px}
+  .dieBox{width:54px;height:54px}
+  .cube{transform:translateZ(-27px)}
+  .f1{transform:translateZ(27px)} .f6{transform:rotateY(180deg) translateZ(27px)}
+  .f3{transform:rotateY(90deg) translateZ(27px)} .f4{transform:rotateY(-90deg) translateZ(27px)}
+  .f5{transform:rotateX(90deg) translateZ(27px)} .f2{transform:rotateX(-90deg) translateZ(27px)}
+  .face{padding:8px;border-radius:11px}
+  .face i{width:9px;height:9px}
+  #rollBtn{padding:13px 10px;font-size:17px}
+  #playersCard{order:3}
+  #viewCard{order:4}
+  #logCard{order:5;max-height:240px}
+  #rulesCard{order:6}
+  #btnsCard{order:7}
+}
+
+/* ===== 棋盤 ===== */
+#world{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.3,.7,.2,1)}
+#board{position:absolute;inset:0;width:100%;height:100%;display:block;filter:drop-shadow(0 calc(var(--k)*10px) calc(var(--k)*18px) rgba(0,0,0,.45))}
+.is3d #board{filter:none}
+.slab{position:absolute;inset:0;border-radius:calc(var(--k)*20px);background:#9a7b45;display:none}
+.is3d .slab{display:block;transform:translateZ(calc(var(--k)*var(--i)*-2.2px))}
+.is3d .slab.floor{background:#5f4a26;transform:translateZ(calc(var(--k)*-15.4px));box-shadow:0 0 calc(var(--k)*46px) calc(var(--k)*14px) rgba(0,0,0,.6)}
+.is3d #stage{cursor:grab}
+#pieces{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
+.piece{position:absolute;left:0;top:0;width:0;height:0;transform-style:preserve-3d;
+  transition-property:transform;transition-timing-function:ease-in-out}
+.piece .hop{position:absolute;left:0;top:0;width:0;height:0;transform-style:preserve-3d}
+.piece .disc,.piece .layer,.piece .shadow{position:absolute;--d:calc(var(--k)*30px);width:var(--d);height:var(--d);
+  left:calc(var(--d)/-2);top:calc(var(--d)/-2);border-radius:50%}
+.piece .shadow{background:rgba(0,0,0,.4);filter:blur(calc(var(--k)*2px));transform:translate(calc(var(--k)*1px),calc(var(--k)*2.5px))}
+.is3d .piece .shadow{transform:translate(calc(var(--k)*3px),calc(var(--k)*4px)) scale(1.08)}
+.piece .layer{display:none;background:var(--cd)}
+.is3d .piece .layer{display:block;transform:translateZ(calc(var(--k)*var(--i)*2px))}
+.piece .disc{pointer-events:auto;display:grid;place-items:center;
+  background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.55) 0,rgba(255,255,255,0) 46%),var(--c);
+  border:calc(var(--k)*2.4px) solid #fff;box-shadow:inset 0 calc(var(--k)*-2px) calc(var(--k)*3px) rgba(0,0,0,.28)}
+.is3d .piece .disc{transform:translateZ(calc(var(--k)*11px))}
+.piece .disc svg{width:74%;height:74%;fill:#fff;transform:rotate(var(--ang,0deg));transition:transform .2s;filter:drop-shadow(0 1px 0 rgba(0,0,0,.25))}
+.piece .badge{position:absolute;left:calc(var(--k)*6px);top:calc(var(--k)*-23px);min-width:calc(var(--k)*17px);height:calc(var(--k)*17px);
+  padding:0 calc(var(--k)*4px);border-radius:99px;background:#10151f;border:calc(var(--k)*1.5px) solid #fff;color:#fff;
+  font-size:calc(var(--k)*11px);font-weight:800;line-height:calc(var(--k)*14px);text-align:center}
+.is3d .piece .badge{transform:translateZ(calc(var(--k)*13px))}
+.piece.arrived .disc{border-color:#ffcf4a;box-shadow:0 0 0 calc(var(--k)*2px) #ffb62e,0 0 calc(var(--k)*10px) #ffb62e}
+.piece.movable .disc{cursor:pointer;animation:glow .9s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 calc(var(--k)*2px) #fff,0 0 0 calc(var(--k)*5px) #ff2d7a}
+  50%{box-shadow:0 0 0 calc(var(--k)*2px) #fff,0 0 0 calc(var(--k)*9px) rgba(255,45,122,.25)}}
+.is3d .piece.movable .hop{animation:bob .8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateZ(0)}50%{transform:translateZ(calc(var(--k)*9px))}}
+.piece.hopping .hop{animation:hop2d var(--hd,.3s) ease-in-out}
+.is3d .piece.hopping .hop{animation:hop3d var(--hd,.3s) ease-in-out}
+@keyframes hop2d{0%,100%{transform:scale(1)}50%{transform:scale(var(--hs,1.2))}}
+@keyframes hop3d{0%,100%{transform:translateZ(0)}50%{transform:translateZ(var(--hz,20px))}}
+.piece.hopping .shadow{animation:shadow2d var(--hd,.3s) ease-in-out}
+.is3d .piece.hopping .shadow{animation:shadow3d var(--hd,.3s) ease-in-out}
+@keyframes shadow2d{50%{transform:translate(var(--so,4px),calc(var(--so,4px)*1.6)) scale(.82);opacity:.4}}
+@keyframes shadow3d{50%{transform:translate(calc(var(--k)*3px),calc(var(--k)*4px)) scale(.75);opacity:.45}}
+.piece.flying .disc{box-shadow:0 0 0 calc(var(--k)*2px) #fff,0 0 calc(var(--k)*18px) calc(var(--k)*5px) rgba(255,255,255,.8)}
+.ripple{animation:ripple .55s ease-out forwards;transform-box:fill-box;transform-origin:center}
+@keyframes ripple{from{opacity:.95;transform:scale(.45)}to{opacity:0;transform:scale(2.2)}}
+.puff{animation:puff .95s ease-out forwards;transform-box:fill-box;transform-origin:center}
+@keyframes puff{from{opacity:.85;transform:scale(.5)}to{opacity:0;transform:scale(2.6)}}
+.trail{animation:trailDraw var(--td,1s) ease-in-out forwards,trailFade .55s ease-out var(--td,1s) forwards}
+@keyframes trailDraw{to{stroke-dashoffset:0}}
+@keyframes trailFade{to{opacity:0}}
+.base.active{animation:baseGlow 1.2s ease-in-out infinite}
+@keyframes baseGlow{0%,100%{stroke-width:3}50%{stroke-width:8}}
+.ghost{animation:spin 2.4s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes spin{to{transform:rotate(360deg)}}
+.boom{animation:boom .6s ease-out forwards;transform-box:fill-box;transform-origin:center}
+@keyframes boom{from{opacity:.95;transform:scale(.4)}to{opacity:0;transform:scale(2)}}
+
+/* ===== 對話框 ===== */
+.modal{position:fixed;inset:0;background:rgba(6,9,16,.66);display:none;align-items:flex-start;justify-content:center;padding:20px 10px;overflow:auto;z-index:20;backdrop-filter:blur(3px)}
+.modal.show{display:flex}
+.sheet{background:var(--sheet);border:1px solid var(--card-b);border-radius:20px;max-width:720px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.sheet h2{font-size:21px;margin-bottom:12px}
+.sec{border-top:1px solid var(--line);padding:14px 0}
+.sec h4{font-size:15px;margin-bottom:8px;color:var(--accent)}
+.seats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:520px){.seats{grid-template-columns:1fr}}
+.seat{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:7px 10px;background:rgba(255,255,255,.04)}
+.seat .chip{width:16px;height:16px;border-radius:50%;border:2px solid #fff}
+select{flex:1;padding:7px;border-radius:9px;border:1px solid var(--card-b);background:#131a2a;color:var(--ink);font:inherit}
+label.opt{display:flex;gap:10px;align-items:flex-start;padding:7px 4px;line-height:1.5;cursor:pointer;border-radius:10px}
+label.opt:hover{background:rgba(255,255,255,.04)}
+label.opt input{margin-top:5px;accent-color:var(--accent)}
+label.opt small{display:block;color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 0 30px}
+.chips.disabled{opacity:.35;pointer-events:none}
+.chip2{width:40px;height:40px;border-radius:10px;border:2px solid var(--card-b);background:#131a2a;font-weight:800;font-size:16px}
+.chip2.on{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:var(--accent-ink)}
+.chips .rand{padding:9px 14px;border-radius:10px;border:1px dashed var(--muted);background:transparent}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row select{flex:none}
+.sheetBtns{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+.sheetBtns button{padding:11px 20px;border-radius:12px;border:1px solid var(--card-b);background:rgba(255,255,255,.06)}
+.sheetBtns .primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:var(--accent-ink);font-weight:800}
+#setupErr{color:#ff8080;font-size:14px;min-height:20px}
+.choiceBtns{display:grid;gap:10px}
+.choiceBtns button{padding:14px;border-radius:12px;border:1px solid var(--card-b);background:rgba(255,255,255,.06);font-size:16px}
+#rankList{font-size:18px;line-height:2;padding-left:26px}
+#toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);
+  font-weight:800;padding:10px 20px;border-radius:999px;font-size:15px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:30;max-width:90vw;text-align:center}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <div class="card" id="brand">
+      <div class="logo">✈</div>
+      <div><h1>飛行棋</h1><small>離線版・2D／3D</small></div>
+    </div>
+    <div class="card" id="playersCard"><h3>玩家</h3><ul id="playerList"></ul></div>
+    <div class="card" id="viewCard">
+      <h3>視角與音效</h3>
+      <div class="seg"><button id="v2d">2D 平面</button><button id="v3d">3D 立體</button></div>
+      <div class="volRow"><button id="soundBtn" title="音效開關">🔊</button><input type="range" id="volRange" min="0" max="100" step="1" aria-label="音量"></div>
+      <div id="viewCtl" hidden>
+        <span>旋轉</span><input type="range" id="spinRange" min="-180" max="180" step="1">
+        <span>傾斜</span><input type="range" id="tiltRange" min="15" max="72" step="1">
+        <span class="hint">用滑鼠在棋盤上拖曳也能轉動視角。</span>
+        <button class="ghostBtn" id="viewReset" style="grid-column:1/-1">回到預設視角</button>
+      </div>
+    </div>
+    <div class="card" id="rulesCard"><h3>本局規則</h3><ul id="ruleList"></ul>
+      <details><summary>規則說明</summary>
+        <p>・版圖是中空十字：外圈 52 格，每條外邊 7 格（含兩端角落），正中間第 4 格是該色的入口；每段轉角 4 格（含共用的角落，內角斜切成兩格）。</p>
+        <p>・飛機從機場起飛到角落的起飛點。起飛點旁邊的半格（三角格）算第 1 步，接著順時針繞外圈。</p>
+        <p>・回到自己顏色那條邊的第 4 格（箭頭）後轉進停機坪；停機坪 7 格，第 7 格是中心終點。到達的飛機回到機場並加上金框。</p>
+        <p>・<b>小飛行</b>：停在自己顏色的格子時，直接跳到前方下一個自己顏色的格子（4 格）。</p>
+        <p>・<b>大飛行</b>：停在內角的自己顏色三角格時，沿虛線飛到下一個內角的同色三角格（12 格），途中越過對手的停機坪。</p>
+        <p>・快捷鍵：空白鍵或 Enter 擲骰子。</p>
+      </details>
+    </div>
+    <div class="btns" id="btnsCard">
+      <button id="newBtn">新遊戲／設定</button>
+      <button id="restartBtn">重新開始</button>
+    </div>
+  </div>
+
+  <div id="stageWrap">
+    <div id="stage">
+      <div id="world">
+        <i class="slab floor"></i>
+        <i class="slab" style="--i:6"></i><i class="slab" style="--i:5"></i><i class="slab" style="--i:4"></i>
+        <i class="slab" style="--i:3"></i><i class="slab" style="--i:2"></i><i class="slab" style="--i:1"></i>
+        <svg id="board" viewBox="0 0 680 680" aria-label="飛行棋棋盤"></svg>
+        <div id="pieces"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="card" id="ctrl">
+      <div id="turnHead">—</div>
+      <div class="dieRow">
+        <div class="dieBox"><div class="cube" id="cube"></div></div>
+        <button id="rollBtn" disabled>擲骰子</button>
+      </div>
+      <div id="msg"></div>
+    </div>
+    <div class="card" id="logCard"><h3>紀錄</h3><ol id="log"></ol></div>
+  </div>
+</div>
+
+<!-- 開局設定 -->
+<div class="modal" id="setup">
+  <div class="sheet">
+    <h2>開局設定</h2>
+    <div class="sec">
+      <h4>玩家（至少 2 方）</h4>
+      <div class="seats" id="seats"></div>
+      <div class="row" style="margin-top:10px">
+        <span>每方飛機數</span>
+        <select id="planesSel"><option value="1">1 架</option><option value="2">2 架</option><option value="3">3 架</option><option value="4">4 架</option></select>
+      </div>
+    </div>
+    <div class="sec">
+      <h4>起飛</h4>
+      <label class="opt"><input type="radio" name="takeoff" value="six"><span>擲 6 起飛<small>正常版</small></span></label>
+      <label class="opt"><input type="radio" name="takeoff" value="fivesix"><span>擲 5 或 6 起飛</span></label>
+      <label class="opt"><input type="radio" name="takeoff" value="custom"><span>自定義起飛<small>點選可以起飛的點數，或按「隨機」讓系統隨機挑選</small></span></label>
+      <div class="chips" id="chips"></div>
+      <label class="opt" style="margin-left:26px" id="randEachWrap"><input type="checkbox" id="randEach"><span>每次開局時重新隨機挑選起飛點數</span></label>
+    </div>
+    <div class="sec">
+      <h4>飛行（小飛行＝同色跳格，大飛行＝虛線飛越）</h4>
+      <label class="opt"><input type="radio" name="jump" value="free"><span>不限制<small>正常版。小飛行接大飛行後，還能再小飛行一次（小→大→小）</small></span></label>
+      <label class="opt"><input type="radio" name="jump" value="once"><span>大、小飛行各只能一次<small>例如：小→大後停住；大→小後停住</small></span></label>
+    </div>
+    <div class="sec">
+      <h4>撞機</h4>
+      <label class="opt"><input type="radio" name="collide" value="classic"><span>① 經典版<small>停在敵機所在格，就把敵機撞回機場；同格多架敵機全部撞回。只是經過不會撞機。</small></span></label>
+      <label class="opt"><input type="radio" name="collide" value="fierce"><span>② 激戰版<small>除了落點撞機，移動途中經過的敵機也會被撞回，包含小飛行跳過的格子和大飛行越過的停機坪。</small></span></label>
+      <label class="opt"><input type="radio" name="collide" value="defense"><span>③ 防禦版<small>單架可以正常撞擊；但敵方 2 架以上的疊機形成防禦，必須用同等或更多架數的疊機才撞得掉，撞不掉時自己的飛機被擊落回機場。自己的疊機可以整疊一起移動。</small></span></label>
+    </div>
+    <div class="sec">
+      <h4>其他</h4>
+      <label class="opt"><input type="checkbox" id="optBonus6"><span>擲到 6 可以再擲一次</span></label>
+      <label class="opt"><input type="checkbox" id="optTriple6"><span>連續擲出三次 6：第三次作廢，最後移動的飛機退回機場</span></label>
+      <label class="opt"><input type="checkbox" id="optExact"><span>進終點需要剛好的點數（多出來的點數會反彈後退）</span></label>
+      <label class="opt"><input type="checkbox" id="optAuto"><span>只有一種走法時自動移動</span></label>
+      <div class="row" style="padding:6px 4px">
+        <span>動畫速度</span>
+        <select id="speedSel"><option value="1.6">慢</option><option value="1">正常</option><option value="0.5">快</option><option value="0.15">極快</option></select>
+      </div>
+    </div>
+    <div id="setupErr"></div>
+    <div class="sheetBtns">
+      <button id="setupCancel">取消</button>
+      <button id="setupStart" class="primary">開始遊戲</button>
+    </div>
+  </div>
+</div>
+
+<!-- 疊機選擇 -->
+<div class="modal" id="choice">
+  <div class="sheet" style="max-width:380px;margin-top:20vh">
+    <h2>要怎麼移動？</h2>
+    <div class="choiceBtns">
+      <button id="choiceOne">只移動 1 架</button>
+      <button id="choiceAll">整疊一起移動</button>
+      <button id="choiceCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 結束 -->
+<div class="modal" id="over">
+  <div class="sheet" style="max-width:420px;margin-top:12vh">
+    <h2>🏁 遊戲結束</h2>
+    <ol id="rankList"></ol>
+    <div class="sheetBtns">
+      <button id="overSetup">新遊戲／設定</button>
+      <button id="overAgain" class="primary">再來一局</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ========= 基本資料 ========= */
+const $ = s => document.querySelector(s);
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+// 依順時針：藍（左上）→ 紅（右上）→ 黃（右下）→ 綠（左下）
+const COLORS = [
+  {name:'藍方', fill:'#3f7ee0', hi:'#6ba0f2', light:'#dfe9fb', dark:'#1f4c98', txt:'#8db8ff'},
+  {name:'紅方', fill:'#e5484d', hi:'#f37478', light:'#fde0e0', dark:'#9d1c22', txt:'#ff9a9d'},
+  {name:'黃方', fill:'#f3bd1c', hi:'#fbd75a', light:'#fdf3c8', dark:'#8c6a00', txt:'#ffd95e'},
+  {name:'綠方', fill:'#30a853', hi:'#5cc97b', light:'#dcf3e1', dark:'#1a6b33', txt:'#7fdd9a'},
+];
+/* 版圖：整張 17×17 單位，一般格是 1×2 的長方形，角落與內角是 2×2（斜切成三角格），停機坪是 1×1 */
+const N = 17, U = 38, O = 17, BW = 680;
+/* 相對位置（每方自己的路線）：
+   -2 機場、-1 起飛點、0 = 起飛點旁的半格（算第 1 步）、1～49 外圈
+   （49 = 自己顏色那條邊正中間第 4 格的入口）、50～55 停機坪、56 終點（停機坪第 7 格） */
+const LAST_OUTER = 49, HOME0 = 50, GOAL = 56;
+const CROSS_R = 52;                    // 大飛行越過的那一格停機坪
+const FLY_FROM = 17, FLY_TO = 29;      // 大飛行起點、終點
+const BASE = -2, READY = -1;
+const PLANE_ROT = [90,180,270,0];
+const PLANE_D = 'M0,-13 C1.8,-13 2.6,-10 2.6,-7 L2.6,-3 L12,2.5 L12,5.5 L2.6,3 L2.6,8.5 L5.5,11 L5.5,13 L0,11.8 L-5.5,13 L-5.5,11 L-2.6,8.5 L-2.6,3 L-12,5.5 L-12,2.5 L-2.6,-3 L-2.6,-7 C-2.6,-10 -1.8,-13 0,-13 Z';
+
+// 繞中心順時針轉 90° k 次（單位座標）
+function rot(k,[x,y]){ for (let i=0;i<k;i++) [x,y]=[N-y,x]; return [x,y]; }
+const LP = ([x,y]) => [O+x*U, O+y*U];          // 單位座標 → 邏輯像素
+/* 左上象限的 13 格外圈（第 i 格 = 全域第 13k+i-1 格） */
+const Q0 = [
+  [[0,6],[2,6],[2,4]],                 // 左邊最上方角落的半格（另一半是起飛點）
+  [[2,4],[3,4],[3,6],[2,6]],
+  [[3,4],[4,4],[4,6],[3,6]],
+  [[4,4],[6,6],[4,6]],                 // 內角左下三角
+  [[4,4],[6,4],[6,6]],                 // 內角右上三角
+  [[4,3],[6,3],[6,4],[4,4]],
+  [[4,2],[6,2],[6,3],[4,3]],
+  [[4,2],[6,0],[6,2]],                 // 上邊最左方角落的半格
+  [[6,0],[7,0],[7,2],[6,2]],
+  [[7,0],[8,0],[8,2],[7,2]],
+  [[8,0],[9,0],[9,2],[8,2]],           // 上邊正中間第 4 格（紅方入口）
+  [[9,0],[10,0],[10,2],[9,2]],
+  [[10,0],[11,0],[11,2],[10,2]],
+];
+const READY_TRI = [[0,4],[2,4],[0,6]];
+const SPARE_TRI = [[4,0],[6,0],[4,2]];
+const TRACK = new Array(52);
+for (let k=0;k<4;k++) Q0.forEach((pts,i)=>{
+  const g=(13*k+i-1+52)%52, rp=pts.map(pt=>rot(k,pt));
+  const cu=[rp.reduce((s,q)=>s+q[0],0)/rp.length, rp.reduce((s,q)=>s+q[1],0)/rp.length];
+  TRACK[g]={pts:rp, c:LP(cu)};
+});
+
+const gOf = (p,r) => (13*p + r + 51) % 52;
+const isOwn = r => r>=1 && r<=LAST_OUTER && r%4===1;
+
+function keyOf(p,r){
+  if (r===BASE) return 'B'+p;
+  if (r===READY) return 'R'+p;
+  if (r<=LAST_OUTER) return 'g'+gOf(p,r);
+  if (r<GOAL) return 'h'+p+'_'+(r-HOME0);
+  return 'C'+p;
+}
+function squareXY(p,r){
+  if (r===READY) return LP(rot(p,[0.67,4.67]));
+  if (r<=LAST_OUTER) return TRACK[gOf(p,r)].c.slice();
+  if (r<GOAL) return LP(rot(p,[r-HOME0+2.5,8.5]));
+  return LP([8.5,8.5]);
+}
+function baseBox(p){
+  const a=rot(p,[0,0]), b=rot(p,[4,4]);
+  return {x:Math.min(a[0],b[0]), y:Math.min(a[1],b[1])};
+}
+function slotXY(p,i){
+  const b=baseBox(p);
+  return LP([b.x+(i%2?2.9:1.1), b.y+(i<2?1.65:3.05)]);
+}
+
+/* ========= 設定 ========= */
+const DEFAULT_CFG = {
+  seats:['human','ai','ai','ai'], planes:4,
+  takeoffMode:'six', custom:[6], randomEachGame:false,
+  jumpRule:'free', collide:'classic',
+  bonus6:true, triple6:true, exactHome:true, autoSingle:true, speed:1
+};
+function loadCfg(){
+  try{ const s=localStorage.getItem('feixingqi.cfg'); if (s) return Object.assign({}, DEFAULT_CFG, JSON.parse(s)); }catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_CFG));
+}
+function saveCfg(c){ try{ localStorage.setItem('feixingqi.cfg', JSON.stringify(c)); }catch(e){} }
+function randomTakeoff(){
+  const k = 1 + Math.floor(Math.random()*3);
+  const pool=[1,2,3,4,5,6]; const out=[];
+  while(out.length<k){ out.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]); }
+  return out.sort((a,b)=>a-b);
+}
+function takeoffOf(cfg){
+  if (cfg.takeoffMode==='six') return [6];
+  if (cfg.takeoffMode==='fivesix') return [5,6];
+  return cfg.custom.slice().sort((a,b)=>a-b);
+}
+
+/* ========= 視角（2D／3D） ========= */
+const VIEW_DEFAULT = {mode:'2d', tilt:50, spin:-12, sound:true, vol:60};
+let VIEW = Object.assign({}, VIEW_DEFAULT);
+try{ const s=localStorage.getItem('feixingqi.view'); if (s) VIEW=Object.assign(VIEW, JSON.parse(s)); }catch(e){}
+function saveView(){ try{ localStorage.setItem('feixingqi.view', JSON.stringify(VIEW)); }catch(e){} }
+const stage=$('#stage'), world=$('#world');
+const curK = () => (stage.clientWidth||BW)/BW;
+function applyView(noRender){
+  const is3d = VIEW.mode==='3d';
+  stage.classList.toggle('is3d', is3d);
+  // 旋轉後棋盤的外框會變寬，依角度縮小，讓整張棋盤留在自己的區域內
+  const a = VIEW.spin*Math.PI/180, fit = 0.93/(Math.abs(Math.cos(a))+Math.abs(Math.sin(a)));
+  world.style.transform = is3d ? `translateY(-3%) scale(${fit.toFixed(3)}) rotateX(${VIEW.tilt}deg) rotateZ(${VIEW.spin}deg)` : 'none';
+  $('#v2d').classList.toggle('on', !is3d); $('#v3d').classList.toggle('on', is3d);
+  $('#viewCtl').hidden = !is3d;
+  $('#spinRange').value = Math.round(VIEW.spin); $('#tiltRange').value = Math.round(VIEW.tilt);
+  $('#soundBtn').textContent = VIEW.sound ? '🔊' : '🔇'; $('#volRange').value = VIEW.vol;
+  if (!noRender && G) renderPlanes('init');
+}
+
+/* ========= 音效（用 Web Audio 即時合成，不需要任何音檔） ========= */
+const SFX = {
+  ctx:null, master:null, nbuf:null,
+  ready(){
+    if (!VIEW.sound) return false;
+    if (!this.ctx){
+      try{
+        const AC=window.AudioContext||window.webkitAudioContext;
+        this.ctx=new AC();
+        this.master=this.ctx.createGain();
+        const comp=this.ctx.createDynamicsCompressor();
+        this.master.connect(comp); comp.connect(this.ctx.destination);
+        const n=this.ctx.sampleRate*2, b=this.ctx.createBuffer(1,n,this.ctx.sampleRate), d=b.getChannelData(0);
+        for (let i=0;i<n;i++) d[i]=Math.random()*2-1;
+        this.nbuf=b; this.setVol();
+      }catch(e){ this.ctx=null; return false; }
+    }
+    if (this.ctx.state==='suspended') this.ctx.resume();
+    return true;
+  },
+  setVol(){ if (this.master) this.master.gain.value = VIEW.sound ? VIEW.vol/100 : 0; },
+  play(name, ...a){ try{ if (this.ready()) this['_'+name](...a); }catch(e){} },
+  env(g,t,a,d,peak){ g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(peak,t+a); g.gain.exponentialRampToValueAtTime(0.0001,t+a+d); },
+  tone(type,f0,f1,dur,peak,delay){
+    const c=this.ctx, t=c.currentTime+(delay||0), o=c.createOscillator(), g=c.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t);
+    if (f1!==f0) o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+    this.env(g,t,0.006,dur,peak);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+dur+0.06);
+  },
+  noise(ftype,f0,f1,q,dur,peak,delay,attack){
+    const c=this.ctx, t=c.currentTime+(delay||0), a=attack||0.005;
+    const s=c.createBufferSource(); s.buffer=this.nbuf; s.loop=true;
+    const f=c.createBiquadFilter(); f.type=ftype; f.Q.value=q;
+    f.frequency.setValueAtTime(f0,t); f.frequency.exponentialRampToValueAtTime(f1,t+dur);
+    const g=c.createGain(); this.env(g,t,a,Math.max(0.01,dur-a),peak);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t,Math.random()); s.stop(t+dur+0.06);
+  },
+  // 走一格：輕輕的「答」
+  _step(){ const f=540+Math.random()*140; this.tone('triangle',f,f*0.7,0.05,0.16); },
+  // 落子：低沉的「咚」加一點木頭敲擊聲
+  _land(big){
+    this.tone('sine',200,62,0.17,big?0.75:0.5);
+    this.noise('lowpass',1900,300,0.7,0.07,big?0.45:0.3);
+    this.tone('triangle',980,700,0.03,0.13);
+  },
+  // 飛機引擎：多個鋸齒波疊出低鳴，加螺旋槳的顫動與氣流聲，音高先升後降
+  _engine(d,big,level){
+    const c=this.ctx, t=c.currentTime, f0=big?60:82, f1=big?130:122, mid=t+d*0.55, end=t+d;
+    const out=c.createGain(), lp=c.createBiquadFilter();
+    lp.type='lowpass'; lp.Q.value=1.3;
+    lp.frequency.setValueAtTime(360,t); lp.frequency.linearRampToValueAtTime(big?1600:1150,mid); lp.frequency.linearRampToValueAtTime(600,end);
+    [['sawtooth',1,0.5],['sawtooth',2.01,0.28],['square',0.5,0.34],['sawtooth',3.02,0.12]].forEach(([type,m,gv])=>{
+      const o=c.createOscillator(), g=c.createGain();
+      o.type=type; o.frequency.setValueAtTime(f0*m,t); o.frequency.linearRampToValueAtTime(f1*m,mid); o.frequency.linearRampToValueAtTime(f1*m*0.8,end);
+      g.gain.value=gv; o.connect(g); g.connect(lp); o.start(t); o.stop(end+0.1);
+    });
+    const trem=c.createGain(); trem.gain.value=0.65;
+    const lfo=c.createOscillator(), lg=c.createGain();
+    lfo.frequency.setValueAtTime(big?20:30,t); lfo.frequency.linearRampToValueAtTime(big?46:52,mid);
+    lg.gain.value=0.35; lfo.connect(lg); lg.connect(trem.gain); lfo.start(t); lfo.stop(end+0.1);
+    lp.connect(trem); trem.connect(out);
+    const s=c.createBufferSource(); s.buffer=this.nbuf; s.loop=true;
+    const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=0.6;
+    bp.frequency.setValueAtTime(700,t); bp.frequency.linearRampToValueAtTime(2300,mid); bp.frequency.linearRampToValueAtTime(900,end);
+    const ng=c.createGain(); ng.gain.value=big?0.24:0.14;
+    s.connect(bp); bp.connect(ng); ng.connect(out); s.start(t,Math.random()); s.stop(end+0.1);
+    const peak=(big?0.6:0.4)*(level||1);
+    out.gain.setValueAtTime(0.0001,t);
+    out.gain.exponentialRampToValueAtTime(peak,t+Math.min(0.16,d*0.25));
+    out.gain.setValueAtTime(peak,t+d*0.72);
+    out.gain.exponentialRampToValueAtTime(0.0001,end);
+    out.connect(this.master);
+  },
+  _takeoff(d){ this._engine(Math.max(0.3,d),false,0.6); },
+  _jump(d){ this.noise('bandpass',500,2300,1.2,d,0.3,0,d*0.4); this._engine(d,false,0.55); },
+  _fly(d){ this.noise('bandpass',400,2600,1,d,0.28,0,d*0.5); this._engine(d,true,1); },
+  _hit(){ this.noise('lowpass',2600,120,0.8,0.55,0.9); this.tone('sine',140,36,0.45,0.9); this.tone('square',90,40,0.2,0.22); },
+  _dice(d){
+    for (let i=0;i<7;i++){
+      const dl=d*(i/7)+Math.random()*0.03;
+      this.noise('highpass',2500,4200,0.7,0.03,0.25,dl); this.tone('triangle',900+Math.random()*600,520,0.025,0.1,dl);
+    }
+  },
+  _arrive(){ [523,659,784,1047].forEach((f,i)=>this.tone('triangle',f,f,0.24,0.3,i*0.09)); },
+  _win(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>this.tone('square',f,f,0.26,0.15,i*0.13)); },
+  _tick(){ this.tone('sine',880,660,0.04,0.12); },
+};
+
+/* ========= 遊戲狀態 ========= */
+let G = null;
+const ABORT = new Error('abort');
+const planeById = id => G.planes[id];
+const isAI = p => G.cfg.seats[p]==='ai';
+const nm = p => `<b style="color:${COLORS[p].txt}">${COLORS[p].name}</b>`;
+
+function wait(ms){
+  const t = G.token;
+  return new Promise((res,rej)=>setTimeout(()=>{ (G && G.token===t) ? res() : rej(ABORT); }, ms*G.cfg.speed));
+}
+function schedule(fn, ms){
+  const t=G.token;
+  setTimeout(()=>{ if (G && G.token===t) fn(); }, ms*G.cfg.speed);
+}
+
+function startGame(cfg){
+  hideModal('over'); hideModal('choice');
+  const active = cfg.seats.map(s=>s!=='off');
+  let takeoff = takeoffOf(cfg);
+  if (cfg.takeoffMode==='custom' && cfg.randomEachGame) takeoff = randomTakeoff();
+  G = {cfg, token:{}, active, takeoff, planes:[], done:[false,false,false,false], rank:[],
+       hits:[0,0,0,0], cur:0, six:0, lastMoved:[null,null,null,null], phase:'idle', roll:null, opts:[], animIds:null};
+  for (let p=0;p<4;p++) if (active[p]) for (let i=0;i<cfg.planes;i++) G.planes.push({id:G.planes.length, p, idx:i, r:BASE});
+  G.cur = active.indexOf(true);
+  buildBoard(); buildPlanes(); renderPlanes('init');
+  $('#log').innerHTML='';
+  log('遊戲開始！起飛點數：' + G.takeoff.join('、'));
+  renderRules();
+  startTurn();
+}
+
+function startTurn(){
+  G.phase='roll'; G.opts=[]; G.roll=null;
+  clearMovable(); hideGhost();
+  setMsg(isAI(G.cur) ? '電腦思考中…' : '請擲骰子');
+  updatePanel();
+  if (isAI(G.cur)) schedule(doRoll, 500);
+}
+
+async function doRoll(){
+  if (!G || G.phase!=='roll') return;
+  G.phase='rolling'; updatePanel();
+  try{
+    const v = 1+Math.floor(Math.random()*6);
+    spinDie(v); SFX.play('dice', 0.55*G.cfg.speed);
+    await wait(720);
+    await afterRoll(v);
+  }catch(e){ if (e!==ABORT) throw e; }
+}
+
+async function afterRoll(v){
+  const p=G.cur; G.roll=v;
+  if (v===6) G.six++; else G.six=0;
+  log(`${nm(p)} 擲出 <b>${v}</b>`);
+  if (v===6 && G.cfg.triple6 && G.six>=3){
+    const lm = G.lastMoved[p]!=null ? planeById(G.lastMoved[p]) : null;
+    if (lm && lm.r>=READY && lm.r<=LAST_OUTER){
+      lm.r=BASE; renderPlanes('hit');
+      log(`⚠️ 連續三次 6！${nm(p)} 最後移動的飛機退回機場`);
+    } else log(`⚠️ 連續三次 6！這次點數作廢`);
+    setMsg('連續三次 6，本回合結束');
+    await wait(800);
+    return endTurn(false);
+  }
+  const extra = v===6 && G.cfg.bonus6;
+  const opts = getOptions(p,v);
+  if (!opts.length){
+    setMsg(extra ? '沒有可以移動的飛機，但擲到 6 可再擲一次' : '沒有可以移動的飛機');
+    log(`${nm(p)} 沒有可以移動的飛機`);
+    await wait(900);
+    return endTurn(extra);
+  }
+  G.opts = opts;
+  if (isAI(p)){ await wait(380); return execute(aiChoose(opts)); }
+  if (G.cfg.autoSingle && distinctCount(opts)===1){ await wait(280); return execute(opts[0]); }
+  G.phase='choose';
+  markMovable();
+  setMsg(`擲出 ${v}，請點選要移動的飛機` + (G.cfg.collide==='defense' && opts.some(o=>o.stack) ? '（點疊機可選擇整疊移動）' : ''));
+  updatePanel();
+}
+
+function getOptions(p,v){
+  const mine = G.planes.filter(x=>x.p===p);
+  const opts=[];
+  if (G.takeoff.includes(v)) mine.filter(x=>x.r===BASE).forEach(b=>opts.push({ids:[b.id], from:BASE}));
+  const onBoard = mine.filter(x=>x.r>=READY && x.r<GOAL);
+  onBoard.forEach(x=>opts.push({ids:[x.id], from:x.r}));
+  if (G.cfg.collide==='defense'){
+    const by={};
+    onBoard.forEach(x=>(by[x.r]=by[x.r]||[]).push(x.id));
+    for (const r in by) if (by[r].length>=2) opts.push({ids:by[r].slice(), from:+r, stack:true});
+  }
+  return opts;
+}
+function distinctCount(opts){ return new Set(opts.map(o=>o.from+'|'+o.ids.length)).size; }
+
+/* ========= 規則引擎 =========
+   回傳一連串事件：pos（移動到某格）、hit（撞回敵機）、destroyed（被防禦擊落）、note（說明） */
+function planMove(p, ids, roll){
+  const cfg=G.cfg, n=ids.length;
+  const start = planeById(ids[0]).r;
+  const ev=[], hit=new Set(); let destroyed=false;
+  if (start===BASE){
+    ev.push({t:'pos', r:READY, kind:'takeoff'});
+    return {ev, final:READY, hits:[], destroyed:false, takeoff:true};
+  }
+  const fierce = cfg.collide==='fierce';
+  const enemiesAt = key => G.planes.filter(q=>q.p!==p && !hit.has(q.id) && q.r>=READY && q.r<GOAL && keyOf(q.p,q.r)===key);
+  const passHit = key => {
+    const en=enemiesAt(key);
+    if (en.length){ en.forEach(e=>hit.add(e.id)); ev.push({t:'hit', ids:en.map(e=>e.id), pass:true}); }
+  };
+  const land = r => {
+    if (r<0 || r>LAST_OUTER) return true;
+    const en = enemiesAt(keyOf(p,r));
+    if (!en.length) return true;
+    if (cfg.collide==='defense'){
+      const by={};
+      en.forEach(e=>(by[e.p]=by[e.p]||[]).push(e));
+      for (const q in by){
+        if (by[q].length>=2 && n<by[q].length){
+          destroyed=true; ev.push({t:'destroyed', owner:+q, size:by[q].length, n}); return false;
+        }
+      }
+    }
+    en.forEach(e=>hit.add(e.id)); ev.push({t:'hit', ids:en.map(e=>e.id)});
+    return true;
+  };
+
+  // 1. 依點數一步步走（從起飛點出發時，旁邊的半格是第 1 步）
+  const target = start + roll;
+  const path=[];
+  if (target<=GOAL || !cfg.exactHome){
+    for (let x=start+1; x<=Math.min(target,GOAL); x++) path.push(x);
+  } else {
+    for (let x=start+1; x<=GOAL; x++) path.push(x);
+    for (let i=1; i<=target-GOAL; i++) path.push(GOAL-i);
+  }
+  path.forEach((x,i)=>{
+    ev.push({t:'pos', r:x, kind:(i>0 && x<path[i-1]) ? 'bounce' : 'step'});
+    if (fierce && i<path.length-1 && x>=0 && x<=LAST_OUTER) passHit(keyOf(p,x));
+  });
+  if (target>GOAL && cfg.exactHome) ev.push({t:'note', text:`超過終點 ${target-GOAL} 格，反彈後退`});
+  let cur = path[path.length-1];
+  if (!land(cur)) return {ev, final:BASE, hits:[...hit], destroyed};
+
+  // 2. 小飛行／大飛行連鎖
+  let flew=false, jumped=false, lastJump=false;
+  for (let guard=0; guard<8; guard++){
+    if (cur===FLY_FROM && !flew){
+      ev.push({t:'note', text:'✈ 大飛行！'});
+      if (fierce){ const q=(p+2)%4; passHit(keyOf(q, CROSS_R)); }
+      cur=FLY_TO; flew=true; lastJump=false;
+      ev.push({t:'pos', r:cur, kind:'fly'});
+      if (!land(cur)) break;
+      continue;
+    }
+    const canJump = isOwn(cur) && cur+4<=LAST_OUTER && (cfg.jumpRule==='free' ? !lastJump : !jumped);
+    if (canJump){
+      ev.push({t:'note', text:'➚ 小飛行'});
+      if (fierce) for (let x=cur+1; x<cur+4; x++) passHit(keyOf(p,x));
+      cur+=4; jumped=true; lastJump=true;
+      ev.push({t:'pos', r:cur, kind:'jump'});
+      if (!land(cur)) break;
+      continue;
+    }
+    break;
+  }
+  return {ev, final: destroyed?BASE:cur, hits:[...hit], destroyed};
+}
+
+async function execute(o){
+  try{ await doExecute(o); }catch(e){ if (e!==ABORT) throw e; }
+}
+async function doExecute(o){
+  G.phase='anim'; clearMovable(); hideGhost(); updatePanel();
+  const p=G.cur;
+  const movers=o.ids.map(planeById);
+  const res=planMove(p, o.ids, G.roll);
+  G.animIds=new Set(o.ids);
+  if (o.ids.length>1) log(`${nm(p)} 整疊 ${o.ids.length} 架一起移動`);
+  for (let i=0;i<res.ev.length;i++){
+    const ev=res.ev[i];
+    if (ev.t==='pos'){
+      const kd=ev.kind, m0=movers[0], air=kd==='fly'||kd==='jump';
+      const fx0=m0.x, fy0=m0.y;
+      movers.forEach(m=>m.r=ev.r);
+      if (air){
+        const [tx,ty]=squareXY(p,ev.r), ms=MOVE_T[kd]*1000*G.cfg.speed;
+        flightFx(p,fx0,fy0,tx,ty,ms,kd==='fly');
+        movers.forEach(m=>m.el.classList.add('flying'));
+        SFX.play(kd, ms/1000+0.12);
+      } else if (kd==='takeoff') SFX.play('takeoff', MOVE_T.takeoff*G.cfg.speed+0.1);
+      else SFX.play('step');
+      renderPlanes(kd);
+      await wait(MOVE_WAIT[kd]||180);
+      if (air) movers.forEach(m=>m.el.classList.remove('flying'));
+      // 落子：這一段移動的最後一格
+      const nx=res.ev.slice(i+1).find(e=>e.t!=='note');
+      const stepping=kd==='step'||kd==='bounce';
+      if (!stepping || !nx || nx.t!=='pos' || !(nx.kind==='step'||nx.kind==='bounce')){
+        if (ev.r!==GOAL){ SFX.play('land',air); ringAt(m0.x,m0.y,COLORS[p].fill,air); }
+        if (air) await wait(140);
+      }
+    } else if (ev.t==='hit'){
+      const vs=ev.ids.map(planeById);
+      const owners=[...new Set(vs.map(v=>v.p))];
+      boomAt(vs[0]); SFX.play('hit');
+      vs.forEach(v=>v.r=BASE);
+      G.hits[p]+=vs.length;
+      renderPlanes('hit');
+      log(`💥 ${nm(p)} ${ev.pass?'途經撞回':'撞回'} ${owners.map(nm).join('、')} ${vs.length} 架飛機`);
+      await wait(520);
+    } else if (ev.t==='destroyed'){
+      boomAt(movers[0]); SFX.play('hit');
+      movers.forEach(m=>m.r=BASE);
+      renderPlanes('hit');
+      log(`🛡️ ${nm(ev.owner)} ${ev.size} 架疊機防禦成功，${nm(p)} ${ev.n} 架被擊落回機場`);
+      await wait(520);
+    } else if (ev.t==='note'){
+      log(`${nm(p)} ${ev.text}`);
+    }
+  }
+  G.animIds=null;
+  if (movers.some(m=>m.r===GOAL)){ SFX.play('arrive'); await wait(250); renderPlanes('arrive'); await wait(520); }
+  G.lastMoved[p]=o.ids[0];
+  if (res.takeoff) log(`${nm(p)} 一架飛機起飛`);
+  movers.forEach(m=>{ if (m.r===GOAL && !m.arrivedLogged){ m.arrivedLogged=true; log(`🎯 ${nm(p)} 一架飛機抵達終點`); } });
+
+  let extra = G.roll===6 && G.cfg.bonus6;
+  if (!G.done[p] && G.planes.filter(x=>x.p===p).every(x=>x.r===GOAL)){
+    G.done[p]=true; G.rank.push(p); extra=false;
+    log(`🏆 ${nm(p)} 全部抵達，獲得第 ${G.rank.length} 名！`);
+    toast(`${COLORS[p].name} 獲得第 ${G.rank.length} 名！`); SFX.play('win');
+    const left=[0,1,2,3].filter(q=>G.active[q] && !G.done[q]);
+    if (left.length<=1){
+      if (left.length===1){ G.rank.push(left[0]); G.done[left[0]]=true; }
+      return gameOver();
+    }
+  }
+  endTurn(extra);
+}
+
+function endTurn(extra){
+  if (G.phase==='over') return;
+  if (extra && !G.done[G.cur]){
+    log(`${nm(G.cur)} 擲到 6，再擲一次`);
+  } else {
+    G.six=0;
+    let n=G.cur;
+    do { n=(n+1)%4; } while (!G.active[n] || G.done[n]);
+    G.cur=n;
+  }
+  startTurn();
+}
+
+function gameOver(){
+  G.phase='over'; clearMovable(); updatePanel();
+  setMsg('遊戲結束');
+  const medals=['🥇','🥈','🥉','④'];
+  $('#rankList').innerHTML = G.rank.map((p,i)=>`<li>${medals[i]||''} ${nm(p)}　<small style="color:#9aa7c0">撞機 ${G.hits[p]} 次</small></li>`).join('');
+  setTimeout(()=>showModal('over'), 700);
+}
+
+/* ========= 電腦玩家 ========= */
+function threat(p, r){
+  const g=gOf(p,r); let c=0;
+  for (const q of G.planes){
+    if (q.p===p) continue;
+    let d=null;
+    if (q.r>=0 && q.r<=LAST_OUTER){ d=(g-gOf(q.p,q.r)+52)%52; if (q.r+d>LAST_OUTER) d=null; }
+    else if (q.r===READY){ d=(g-gOf(q.p,0)+52)%52+1; }
+    if (d!==null && d>=1 && d<=6) c++;
+  }
+  if (G.cfg.collide==='defense'){
+    const own=G.planes.filter(x=>x.p===p && x.r===r).length;
+    if (own>=2) c*=0.3;
+  }
+  return c;
+}
+function scoreOpt(o){
+  const p=G.cur, n=o.ids.length, from=o.from;
+  const res=planMove(p, o.ids, G.roll);
+  let s=Math.random()*3;
+  if (res.takeoff){
+    s+=26 + 4*G.planes.filter(x=>x.p===p && x.r===BASE).length;
+    return s;
+  }
+  if (res.destroyed){
+    s -= 45*n + Math.max(from,0)*0.8*n;
+  } else {
+    const to=res.final;
+    s += (to-from)*0.9*n;
+    if (to===GOAL) s+=70*n;
+    if (from<HOME0 && to>=HOME0) s+=18*n;
+    if (to>=0 && to<=LAST_OUTER){
+      const ownThere = G.planes.filter(x=>x.p===p && x.r===to && !o.ids.includes(x.id)).length;
+      let t=threat(p,to);
+      if (G.cfg.collide==='defense' && ownThere+n>=2) t*=0.3;
+      s -= 7*t*n*(0.5+to/52);
+    }
+    if (from>=0 && from<=LAST_OUTER) s += 5*threat(p,from)*(0.5+from/52);
+  }
+  res.hits.forEach(id=>{ const v=planeById(id); s+=30+Math.max(v.r,0)*0.7; });
+  return s;
+}
+function aiChoose(opts){
+  let best=null, bs=-Infinity; const seen=new Set();
+  for (const o of opts){
+    const k=o.from+'|'+o.ids.length;
+    if (seen.has(k)) continue; seen.add(k);
+    const s=scoreOpt(o);
+    if (s>bs){ bs=s; best=o; }
+  }
+  return best;
+}
+
+/* ========= 棋盤繪製 ========= */
+function buildBoard(){
+  const act = G ? G.active : [true,true,true,true];
+  const seatsNow = G ? G.cfg.seats : null;
+  const svg=$('#board'); svg.innerHTML='';
+  const defs=el('defs',{},svg);
+  COLORS.forEach((C,i)=>{
+    const g=el('linearGradient',{id:'cg'+i,x1:0,y1:0,x2:1,y2:1},defs);
+    el('stop',{offset:0,'stop-color':C.hi},g); el('stop',{offset:1,'stop-color':C.fill},g);
+  });
+  const bg=el('linearGradient',{id:'bgG',x1:0,y1:0,x2:1,y2:1},defs);
+  el('stop',{offset:0,'stop-color':'#fdf7e6'},bg); el('stop',{offset:1,'stop-color':'#efe2c0'},bg);
+  el('rect',{x:1.5,y:1.5,width:BW-3,height:BW-3,rx:20,fill:'url(#bgG)',stroke:'#c7b182','stroke-width':3},svg);
+  el('rect',{x:8,y:8,width:BW-16,height:BW-16,rx:15,fill:'none',stroke:'#e0cfa3','stroke-width':1.5},svg);
+  const L={};
+  ['track','deco','ghost','fx'].forEach(n=>L[n]=el('g',{id:'layer-'+n},svg));
+  const P = pts => pts.map(pt=>LP(pt).join(',')).join(' ');
+  const CELL = '#fffdf4';
+
+  // 機場與起飛點
+  for (let p=0;p<4;p++){
+    const C=COLORS[p], b=baseBox(p), [bx,by]=LP([b.x,b.y]);
+    el('rect',{x:bx+5,y:by+5,width:4*U-10,height:4*U-10,rx:16,fill:C.light,stroke:C.fill,'stroke-width':3,class:'base',id:'base'+p},L.track);
+    for (let i=0;i<4;i++){
+      const [x,y]=slotXY(p,i);
+      el('circle',{cx:x,cy:y,r:18,fill:'#fff',stroke:C.fill,'stroke-width':2,'stroke-dasharray':'4 3',opacity:act[p]?1:.35},L.track);
+    }
+    const t=el('text',{x:bx+2*U,y:by+31,'text-anchor':'middle','font-size':14,'font-weight':700,fill:C.dark},L.track);
+    t.textContent = C.name + (seatsNow ? (act[p] ? (seatsNow[p]==='ai'?'・電腦':'・玩家') : '・未參加') : '');
+    el('polygon',{points:P(READY_TRI.map(pt=>rot(p,pt))),fill:C.light,stroke:C.fill,'stroke-width':2.5,'stroke-linejoin':'round'},L.track);
+    el('polygon',{points:P(SPARE_TRI.map(pt=>rot(p,pt))),fill:'#eadcb6',stroke:CELL,'stroke-width':2.5,'stroke-linejoin':'round'},L.track);
+    const [rx,ry]=squareXY(p,READY);
+    el('path',{d:PLANE_D,fill:C.fill,opacity:.5,transform:`translate(${rx},${ry}) rotate(${PLANE_ROT[p]}) scale(.72)`},L.track);
+  }
+
+  // 外圈 52 格
+  TRACK.forEach((s,g)=>{
+    const tri=s.pts.length===3;
+    el('polygon',{points:P(s.pts),fill:`url(#cg${g%4})`,stroke:CELL,'stroke-width':3,'stroke-linejoin':'round'},L.track);
+    el('circle',{cx:s.c[0],cy:s.c[1],r:tri?11:12.5,fill:CELL,opacity:.95},L.track);
+  });
+
+  // 停機坪（6 格）與中心終點
+  for (let p=0;p<4;p++){
+    for (let i=0;i<6;i++){
+      const pts=[[i+2,8],[i+3,8],[i+3,9],[i+2,9]].map(pt=>rot(p,pt));
+      el('polygon',{points:P(pts),fill:`url(#cg${p})`,stroke:CELL,'stroke-width':3,'stroke-linejoin':'round'},L.track);
+      const [x,y]=squareXY(p,HOME0+i);
+      if (i<5) el('circle',{cx:x,cy:y,r:12.5,fill:CELL,opacity:.95},L.track);
+    }
+  }
+  el('polygon',{points:P([[8,8],[9,8],[9,9],[8,9]]),fill:CELL,stroke:CELL,'stroke-width':3,'stroke-linejoin':'round'},L.track);
+  for (let p=0;p<4;p++){
+    el('polygon',{points:P([[8,8],[8.5,8.5],[8,9]].map(pt=>rot(p,pt))),fill:COLORS[p].fill},L.track);
+  }
+  const [cx,cy]=LP([8.5,8.5]);
+  let star=''; for (let i=0;i<10;i++){ const a=Math.PI/5*i-Math.PI/2, r=i%2?4.2:9.5; star+=`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)} `; }
+  el('circle',{cx,cy,r:12,fill:'#fff',stroke:'#f0a800','stroke-width':2},L.track);
+  el('polygon',{points:star,fill:'#f5b400'},L.track);
+
+  // 箭頭：入口轉進停機坪、停機坪最後一格指向中心
+  const arrow=([x1,y1],[x2,y2],color,s)=>{
+    const ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI;
+    el('path',{d:'M-6,-7 L7,0 L-6,7 Z',fill:color,transform:`translate(${x1},${y1}) rotate(${ang}) scale(${s||1})`},L.deco);
+  };
+  for (let p=0;p<4;p++){
+    arrow(squareXY(p,LAST_OUTER), squareXY(p,HOME0), COLORS[p].dark);
+    arrow(squareXY(p,GOAL-1), squareXY(p,GOAL), '#fff', 1.15);
+  }
+
+  // 大飛行虛線
+  for (let p=0;p<4;p++){
+    const [x1,y1]=squareXY(p,FLY_FROM), [x2,y2]=squareXY(p,FLY_TO);
+    const len=Math.hypot(x2-x1,y2-y1), dx=(x2-x1)/len, dy=(y2-y1)/len;
+    el('line',{x1:x1+dx*14,y1:y1+dy*14,x2:x2-dx*14,y2:y2-dy*14,stroke:COLORS[p].dark,'stroke-width':4,'stroke-dasharray':'3 7','stroke-linecap':'round',opacity:.85},L.deco);
+    const ang=Math.atan2(dy,dx)*180/Math.PI+90;
+    [0.25,0.75].forEach(f=>el('path',{d:PLANE_D,fill:COLORS[p].dark,stroke:'#fdf7e6','stroke-width':1.2,transform:`translate(${x1+dx*len*f},${y1+dy*len*f}) rotate(${ang}) scale(.95)`},L.deco));
+    arrow([x1,y1],[x2,y2],COLORS[p].dark,.8);
+    arrow([x2,y2],[x2+dx,y2+dy],COLORS[p].dark,.8);
+  }
+}
+
+function buildPlanes(){
+  const box=$('#pieces'); box.innerHTML='';
+  G.planes.forEach(pl=>{
+    const C=COLORS[pl.p];
+    const e=document.createElement('div'); e.className='piece';
+    e.style.setProperty('--c',C.fill); e.style.setProperty('--cd',C.dark);
+    let layers=''; for (let i=1;i<=5;i++) layers+=`<i class="layer" style="--i:${i}"></i>`;
+    e.innerHTML=`<i class="shadow"></i><div class="hop">${layers}<div class="disc"><svg viewBox="-15 -15 30 30"><path d="${PLANE_D}"/></svg></div><b class="badge" style="display:none"></b></div>`;
+    const disc=e.querySelector('.disc');
+    disc.addEventListener('click',()=>onPlaneClick(pl.id));
+    disc.addEventListener('mouseenter',()=>onPlaneHover(pl.id));
+    disc.addEventListener('mouseleave',hideGhost);
+    e.addEventListener('animationend',ev=>{ if (ev.animationName==='hop2d'||ev.animationName==='hop3d') e.classList.remove('hopping'); });
+    pl.el=e; pl.x=undefined; pl.ang=PLANE_ROT[pl.p];
+    box.appendChild(e);
+  });
+}
+
+const MOVE_T    = {init:0, step:.16, bounce:.16, jump:.5, fly:1.15, hit:.5, arrive:.55, takeoff:.36};   // 移動秒數
+const MOVE_WAIT = {step:180, bounce:180, jump:520, fly:1180, takeoff:390};                               // 等待毫秒
+const HOP       = {step:[7,1.06], bounce:[7,1.06], jump:[40,1.35], fly:[100,1.75], takeoff:[26,1.22], hit:[46,1.2], arrive:[40,1.25]};
+
+// 飛行特效：地面上的航跡線＋沿途的煙霧
+function flightFx(p,x1,y1,x2,y2,ms,big){
+  const lay=$('#layer-fx'), len=Math.hypot(x2-x1,y2-y1), tk=G.token;
+  const mk=(w,color,op)=>{
+    const ln=el('line',{x1,y1,x2,y2,stroke:color,'stroke-width':w,'stroke-linecap':'round',opacity:op,'stroke-dasharray':len,'stroke-dashoffset':len,class:'trail'},lay);
+    ln.style.setProperty('--td',ms+'ms'); setTimeout(()=>ln.remove(),ms+650);
+  };
+  mk(big?11:7,'#ffffff',.85); mk(big?4:2.5,COLORS[p].fill,.95);
+  const n=big?10:4;
+  for (let i=1;i<=n;i++){
+    const f=i/(n+1), e=f<.5?2*f*f:1-Math.pow(-2*f+2,2)/2;   // 配合 ease-in-out
+    setTimeout(()=>{
+      if (!G || G.token!==tk) return;
+      const c=el('circle',{cx:x1+(x2-x1)*e,cy:y1+(y2-y1)*e,r:big?8:5.5,fill:'#fff',class:'puff'},lay);
+      setTimeout(()=>c.remove(),980);
+    }, ms*f);
+  }
+}
+// 落子特效：一圈擴散的波紋
+function ringAt(x,y,color,big){
+  const lay=$('#layer-fx');
+  const c=el('circle',{cx:x,cy:y,r:big?20:16,fill:'none',stroke:color,'stroke-width':big?5:3.5,class:'ripple'},lay);
+  const c2=el('circle',{cx:x,cy:y,r:big?20:16,fill:'none',stroke:'#fff','stroke-width':1.5,class:'ripple'},lay);
+  setTimeout(()=>{c.remove();c2.remove();},600);
+}
+function renderPlanes(kind){
+  if (!G) return;
+  const k=curK(), is3d=VIEW.mode==='3d';
+  const anim = G.animIds || new Set();
+  const inCenter = pl => pl.r===GOAL && anim.has(pl.id);   // 動畫中先飛到中心，結束後回機場標示「已到達」
+  const groups={};
+  G.planes.forEach(pl=>{
+    if (pl.r>=READY && (pl.r<GOAL || inCenter(pl))){ const key=keyOf(pl.p,pl.r); (groups[key]=groups[key]||[]).push(pl); }
+  });
+  const D = MOVE_T[kind]!==undefined ? MOVE_T[kind] : .16;
+  G.planes.forEach(pl=>{
+    let x,y,z=0,badge=0;
+    const parked = pl.r===BASE || (pl.r===GOAL && !inCenter(pl));
+    if (parked) [x,y]=slotXY(pl.p,pl.idx);
+    else {
+      [x,y]=squareXY(pl.p,pl.r);
+      const grp=groups[keyOf(pl.p,pl.r)], n=grp.length;
+      if (n>1){
+        const i=grp.indexOf(pl);
+        if (is3d) z=i*11; else { x+=(i-(n-1)/2)*5; y-=(i-(n-1)/2)*5; }
+        if (i===n-1) badge=n;
+      }
+    }
+    const e=pl.el;
+    if (kind==='init' || pl.x===undefined){ if (parked || pl.r===READY) pl.ang=PLANE_ROT[pl.p]; }
+    else {
+      const dist=Math.hypot(x-pl.x,y-pl.y);
+      if (dist>8){
+        if (parked) pl.ang=PLANE_ROT[pl.p];
+        else {
+          let a=Math.atan2(y-pl.y,x-pl.x)*180/Math.PI+90;
+          while (a-pl.ang>180) a-=360; while (a-pl.ang<-180) a+=360;
+          pl.ang=a;
+        }
+        const h=HOP[kind];
+        if (h){
+          e.classList.remove('hopping'); void e.offsetWidth;
+          e.style.setProperty('--hz',(h[0]*k)+'px'); e.style.setProperty('--hs',h[1]); e.style.setProperty('--so',(h[0]*0.16*k)+'px'); e.style.setProperty('--hd',(D*G.cfg.speed)+'s');
+          e.classList.add('hopping');
+        }
+      }
+    }
+    pl.x=x; pl.y=y;
+    e.style.transitionDuration=(D*G.cfg.speed)+'s';
+    e.style.transform=`translate3d(${x*k}px,${y*k}px,${z*k}px)`;
+    e.style.zIndex = anim.has(pl.id) ? 50 : (badge ? 5 : 1);
+    e.style.setProperty('--ang', pl.ang+'deg');
+    e.classList.toggle('arrived', pl.r===GOAL && !inCenter(pl));
+    const b=e.querySelector('.badge'); b.textContent=badge||''; b.style.display=badge?'':'none';
+  });
+}
+
+function boomAt(pl){
+  const c=el('circle',{cx:pl.x,cy:pl.y,r:20,fill:'#ff5a1f',class:'boom'},$('#layer-fx'));
+  setTimeout(()=>c.remove(),700);
+}
+
+function markMovable(){
+  const ids=new Set(); G.opts.forEach(o=>o.ids.forEach(id=>ids.add(id)));
+  G.planes.forEach(pl=>pl.el.classList.toggle('movable', ids.has(pl.id)));
+}
+function clearMovable(){ if (G) G.planes.forEach(pl=>pl.el && pl.el.classList.remove('movable')); }
+
+function onPlaneHover(id){
+  if (!G || G.phase!=='choose') return;
+  const o=G.opts.find(o=>o.ids.length===1 && o.ids[0]===id);
+  if (!o) return;
+  const res=planMove(G.cur,o.ids,G.roll);
+  const lay=$('#layer-ghost'); lay.innerHTML='';
+  if (res.final>=READY){
+    const [x,y]=squareXY(G.cur,res.final);
+    el('circle',{cx:x,cy:y,r:19,fill:'none',stroke:'#10151f','stroke-width':3.5,'stroke-dasharray':'6 5',class:'ghost'},lay);
+  }
+}
+function hideGhost(){ const l=$('#layer-ghost'); if (l) l.innerHTML=''; }
+
+let pendingChoice=null;
+function onPlaneClick(id){
+  if (!G || G.phase!=='choose') return;
+  const single=G.opts.find(o=>o.ids.length===1 && o.ids[0]===id);
+  if (!single) return;
+  const stack=G.opts.find(o=>o.stack && o.ids.includes(id));
+  if (stack){
+    pendingChoice={single, stack};
+    $('#choiceAll').textContent=`整疊 ${stack.ids.length} 架一起移動`;
+    showModal('choice');
+    return;
+  }
+  SFX.play('tick');
+  execute(single);
+}
+
+/* ========= 骰子（立體方塊） ========= */
+const DIE_ROT = {1:[0,0],2:[90,0],3:[0,-90],4:[0,90],5:[-90,0],6:[0,180]};
+let dieSpins=0;
+function buildDie(){
+  const faces={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+  const cube=$('#cube'); cube.innerHTML='';
+  for (let v=1;v<=6;v++){
+    const f=document.createElement('div'); f.className='face f'+v;
+    for (let i=0;i<9;i++){ const s=document.createElement('i'); if (faces[v].includes(i)) s.className='on'; f.appendChild(s); }
+    cube.appendChild(f);
+  }
+}
+function spinDie(v){
+  const cube=$('#cube'), [bx,by]=DIE_ROT[v];
+  dieSpins++;
+  const half = getComputedStyle(cube.parentNode).width;
+  cube.style.transitionDuration=(0.65*(G?G.cfg.speed:1))+'s';
+  cube.style.transform=`translateZ(calc(${half} / -2)) rotateX(${bx+360*dieSpins}deg) rotateY(${by+360*dieSpins}deg)`;
+}
+function showDie(v){ if (v) spinDie(v); }
+
+/* ========= 側欄 ========= */
+function setMsg(t){ $('#msg').innerHTML=t; }
+function log(html){
+  const li=document.createElement('li'); li.innerHTML=html;
+  const ol=$('#log'); ol.prepend(li);
+  while (ol.children.length>80) ol.lastChild.remove();
+}
+let toastTimer=null;
+function toast(t){
+  const e=$('#toast'); e.textContent=t; e.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>e.classList.remove('show'),2200);
+}
+
+function updatePanel(){
+  if (!G) return;
+  const p=G.cur;
+  $('#turnHead').innerHTML = G.phase==='over' ? '遊戲結束'
+    : `<span class="chip" style="background:${COLORS[p].fill}"></span>${COLORS[p].name}的回合 <small>${isAI(p)?'電腦':'玩家'}</small>`;
+  $('#rollBtn').disabled = !(G.phase==='roll' && !isAI(p));
+  for (let q=0;q<4;q++){ const b=$('#base'+q); if (b) b.classList.toggle('active', q===p && G.phase!=='over'); }
+  const ul=$('#playerList'); ul.innerHTML='';
+  const medals=['🥇','🥈','🥉','④'];
+  for (let q=0;q<4;q++){
+    if (!G.active[q]) continue;
+    const mine=G.planes.filter(x=>x.p===q);
+    const rk=G.rank.indexOf(q);
+    const li=document.createElement('li');
+    li.className='pl'+(q===p && G.phase!=='over' ? ' cur' : '');
+    li.style.setProperty('--pc',COLORS[q].fill);
+    const pips=mine.map(x=>`<i class="${x.r===GOAL?'home':x.r>=READY?'out':''}"></i>`).join('');
+    li.innerHTML=`<span class="chip"></span><div class="pn"><b>${COLORS[q].name}</b><small>${isAI(q)?'電腦':'玩家'}・${mine.filter(x=>x.r===GOAL).length}/${mine.length}</small></div>`+
+      `<div class="pips">${pips}</div><span class="hits">💥 ${G.hits[q]}</span>`+(rk>=0?`<span class="rk">${medals[rk]}</span>`:'');
+    ul.appendChild(li);
+  }
+}
+
+function renderRules(){
+  const c=G.cfg;
+  const items=[
+    `起飛：擲 ${G.takeoff.join(' 或 ')} 起飛` + (c.takeoffMode==='six'?'（正常版）': c.takeoffMode==='custom'?'（自定義）':''),
+    c.jumpRule==='free' ? '飛行：不限制（小→大→小）' : '飛行：大、小飛行各只能一次',
+    {classic:'撞機：① 經典版（落點撞機）', fierce:'撞機：② 激戰版（落點＋途經都撞）', defense:'撞機：③ 防禦版（2 架以上疊機需同等架數才撞得掉）'}[c.collide],
+    c.bonus6 ? '擲到 6 再擲一次' : '擲到 6 不再擲',
+    c.triple6 ? '連續三次 6 懲罰：開' : '連續三次 6 懲罰：關',
+    c.exactHome ? '進終點需剛好點數（超過反彈）' : '進終點不需剛好點數',
+  ];
+  $('#ruleList').innerHTML=items.map(t=>`<li>${t}</li>`).join('');
+}
+
+function showModal(id){ $('#'+id).classList.add('show'); }
+function hideModal(id){ $('#'+id).classList.remove('show'); }
+
+/* ========= 開局設定畫面 ========= */
+let formCustom=[6];
+function buildSetupForm(){
+  const seats=$('#seats'); seats.innerHTML='';
+  COLORS.forEach((C,p)=>{
+    const d=document.createElement('div'); d.className='seat';
+    d.innerHTML=`<span class="chip" style="background:${C.fill}"></span><b style="width:44px">${C.name}</b>
+      <select data-seat="${p}"><option value="human">玩家</option><option value="ai">電腦</option><option value="off">不參加</option></select>`;
+    seats.appendChild(d);
+  });
+  const chips=$('#chips'); chips.innerHTML='';
+  for (let n=1;n<=6;n++){
+    const b=document.createElement('button'); b.type='button'; b.className='chip2'; b.textContent=n; b.dataset.n=n;
+    b.onclick=()=>{ const i=formCustom.indexOf(n); if (i>=0) formCustom.splice(i,1); else formCustom.push(n); paintChips(); };
+    chips.appendChild(b);
+  }
+  const r=document.createElement('button'); r.type='button'; r.className='rand'; r.textContent='🎲 隨機';
+  r.onclick=()=>{ formCustom=randomTakeoff(); paintChips(); };
+  chips.appendChild(r);
+  document.querySelectorAll('input[name=takeoff]').forEach(i=>i.addEventListener('change',paintChips));
+}
+function paintChips(){
+  document.querySelectorAll('.chip2').forEach(b=>b.classList.toggle('on', formCustom.includes(+b.dataset.n)));
+  const custom=document.querySelector('input[name=takeoff]:checked')?.value==='custom';
+  $('#chips').classList.toggle('disabled', !custom);
+  $('#randEachWrap').style.opacity = custom ? 1 : .4;
+  $('#randEach').disabled = !custom;
+}
+function openSetup(){
+  const c = G ? G.cfg : loadCfg();
+  document.querySelectorAll('select[data-seat]').forEach(s=>s.value=c.seats[+s.dataset.seat]);
+  $('#planesSel').value=String(c.planes);
+  document.querySelector(`input[name=takeoff][value=${c.takeoffMode}]`).checked=true;
+  document.querySelector(`input[name=jump][value=${c.jumpRule}]`).checked=true;
+  document.querySelector(`input[name=collide][value=${c.collide}]`).checked=true;
+  formCustom=c.custom.slice();
+  $('#randEach').checked=c.randomEachGame;
+  $('#optBonus6').checked=c.bonus6; $('#optTriple6').checked=c.triple6;
+  $('#optExact').checked=c.exactHome; $('#optAuto').checked=c.autoSingle;
+  $('#speedSel').value=String(c.speed);
+  $('#setupErr').textContent='';
+  $('#setupCancel').hidden=!G;
+  paintChips();
+  showModal('setup');
+}
+function readSetup(){
+  return {
+    seats:[...document.querySelectorAll('select[data-seat]')].sort((a,b)=>a.dataset.seat-b.dataset.seat).map(s=>s.value),
+    planes:+$('#planesSel').value,
+    takeoffMode:document.querySelector('input[name=takeoff]:checked').value,
+    custom:formCustom.slice().sort((a,b)=>a-b),
+    randomEachGame:$('#randEach').checked,
+    jumpRule:document.querySelector('input[name=jump]:checked').value,
+    collide:document.querySelector('input[name=collide]:checked').value,
+    bonus6:$('#optBonus6').checked, triple6:$('#optTriple6').checked,
+    exactHome:$('#optExact').checked, autoSingle:$('#optAuto').checked,
+    speed:+$('#speedSel').value,
+  };
+}
+
+/* ========= 事件綁定 ========= */
+$('#rollBtn').onclick=()=>doRoll();
+document.addEventListener('keydown',e=>{
+  if (document.querySelector('.modal.show')) return;
+  if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if ((e.code==='Space'||e.code==='Enter') && G && G.phase==='roll' && !isAI(G.cur)){ e.preventDefault(); doRoll(); }
+});
+$('#newBtn').onclick=openSetup;
+$('#restartBtn').onclick=()=>{ if (G) startGame(G.cfg); };
+$('#setupCancel').onclick=()=>hideModal('setup');
+$('#setupStart').onclick=()=>{
+  const c=readSetup();
+  if (c.seats.filter(s=>s!=='off').length<2){ $('#setupErr').textContent='至少要有 2 方參加。'; return; }
+  if (c.takeoffMode==='custom' && !c.randomEachGame && !c.custom.length){ $('#setupErr').textContent='自定義起飛至少要選一個點數。'; return; }
+  saveCfg(c); hideModal('setup'); startGame(c);
+};
+$('#choiceOne').onclick=()=>{ hideModal('choice'); if (pendingChoice && G.phase==='choose') execute(pendingChoice.single); pendingChoice=null; };
+$('#choiceAll').onclick=()=>{ hideModal('choice'); if (pendingChoice && G.phase==='choose') execute(pendingChoice.stack); pendingChoice=null; };
+$('#choiceCancel').onclick=()=>{ hideModal('choice'); pendingChoice=null; };
+$('#overAgain').onclick=()=>{ hideModal('over'); startGame(G.cfg); };
+$('#overSetup').onclick=()=>{ hideModal('over'); openSetup(); };
+
+// 視角切換與拖曳
+$('#v2d').onclick=()=>{ VIEW.mode='2d'; applyView(); saveView(); };
+$('#v3d').onclick=()=>{ VIEW.mode='3d'; applyView(); saveView(); };
+$('#spinRange').oninput=e=>{ VIEW.spin=+e.target.value; world.style.transition='none'; applyView(true); };
+$('#tiltRange').oninput=e=>{ VIEW.tilt=+e.target.value; world.style.transition='none'; applyView(true); };
+$('#spinRange').onchange=$('#tiltRange').onchange=()=>{ world.style.transition=''; saveView(); };
+$('#viewReset').onclick=()=>{ VIEW.tilt=VIEW_DEFAULT.tilt; VIEW.spin=VIEW_DEFAULT.spin; applyView(true); saveView(); };
+$('#soundBtn').onclick=()=>{ VIEW.sound=!VIEW.sound; applyView(true); SFX.setVol(); SFX.play('tick'); saveView(); };
+$('#volRange').oninput=e=>{ VIEW.vol=+e.target.value; SFX.setVol(); };
+$('#volRange').onchange=()=>{ SFX.play('land'); saveView(); };
+let drag=null;
+stage.addEventListener('pointerdown',e=>{
+  if (VIEW.mode!=='3d' || e.pointerType!=='mouse' || e.button!==0 || e.target.closest('.disc')) return;
+  drag={x:e.clientX,y:e.clientY,spin:VIEW.spin,tilt:VIEW.tilt,id:e.pointerId};
+  stage.setPointerCapture(e.pointerId); world.style.transition='none'; stage.style.cursor='grabbing';
+});
+stage.addEventListener('pointermove',e=>{
+  if (!drag) return;
+  let s=drag.spin-(e.clientX-drag.x)*0.35;
+  while (s>180) s-=360; while (s<-180) s+=360;
+  VIEW.spin=s;
+  VIEW.tilt=Math.max(15,Math.min(72,drag.tilt-(e.clientY-drag.y)*0.25));
+  applyView(true);
+});
+const endDrag=()=>{ if (!drag) return; drag=null; world.style.transition=''; stage.style.cursor=''; saveView(); };
+stage.addEventListener('pointerup',endDrag);
+stage.addEventListener('pointercancel',endDrag);
+
+// 棋盤大小改變時，重新換算棋子位置
+new ResizeObserver(()=>{
+  stage.style.setProperty('--k', curK());
+  if (G) renderPlanes('init');
+}).observe(stage);
+
+buildSetupForm();
+buildDie();
+buildBoard();
+stage.style.setProperty('--k', curK());
+applyView(true);
+openSetup();
+</script>
+</body>
+</html>
